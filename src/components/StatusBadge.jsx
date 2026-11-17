@@ -5,10 +5,10 @@ export function StatusBadge({ status }) {
 
   return (
     <span
-      className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${colors.bg} ${colors.text} ${colors.border}`}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${colors.bg} ${colors.text} ${colors.border}`}
     >
-      {status}
+      <span className={`w-1.5 h-1.5 rounded-full ${colors.dot}`} aria-hidden="true" />
+      <span>{status}</span>
     </span>
   );
 }
-

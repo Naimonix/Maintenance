@@ -1,75 +1,93 @@
 /**
- * Parse CSV string to JSON array
+ * Parse RFC 4180 CSV string to JSON array, supporting CRLF/LF line endings,
+ * quoted fields with embedded newlines, and escaped quotes ("").
  * @param {string} csvText - Raw CSV text
- * @returns {Array} Array of objects with keys from header row
+ * @returns {Array<Object>} Array of objects with keys from header row
  */
 export function parseCSV(csvText) {
   if (!csvText || csvText.trim() === '') {
     return [];
   }
 
-  const lines = csvText.trim().split('\n');
-  
-  if (lines.length === 0) {
+  // Strip UTF-8 BOM if present
+  const normalizedText = csvText.charCodeAt(0) === 0xfeff ? csvText.slice(1) : csvText;
+
+  const rows = parseCSVRows(normalizedText);
+  if (rows.length === 0) {
     return [];
   }
 
-  // Parse header row
-  const headers = lines[0].split(',').map(header => header.trim());
+  const headers = rows[0].map((header) => header.trim());
+  if (headers.every((header) => header === '')) {
+    return [];
+  }
 
-  // Parse data rows
   const data = [];
-  for (let i = 1; i < lines.length; i++) {
-    const values = parseCSVLine(lines[i]);
-    
-    if (values.length === headers.length) {
-      const row = {};
-      headers.forEach((header, index) => {
-        row[header] = values[index].trim();
-      });
-      data.push(row);
+  for (let i = 1; i < rows.length; i++) {
+    const values = rows[i];
+
+    // Skip blank lines
+    if (values.length === 1 && values[0].trim() === '') {
+      continue;
     }
+
+    const row = {};
+    headers.forEach((header, index) => {
+      if (header) {
+        row[header] = (values[index] ?? '').trim();
+      }
+    });
+    data.push(row);
   }
 
   return data;
 }
 
 /**
- * Parse a single CSV line, handling quoted values
- * @param {string} line - Single CSV line
- * @returns {Array} Array of values
+ * Tokenize CSV text into rows of field strings.
+ * @param {string} text - Normalized CSV text
+ * @returns {Array<Array<string>>} Parsed rows
  */
-function parseCSVLine(line) {
-  const values = [];
-  let current = '';
+function parseCSVRows(text) {
+  const rows = [];
+  let currentRow = [];
+  let currentValue = '';
   let inQuotes = false;
 
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    const nextChar = line[i + 1];
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const nextChar = text[i + 1];
 
     if (char === '"') {
       if (inQuotes && nextChar === '"') {
-        // Escaped quote
-        current += '"';
-        i++; // Skip next quote
+        currentValue += '"';
+        i++;
       } else {
-        // Toggle quote state
         inQuotes = !inQuotes;
       }
     } else if (char === ',' && !inQuotes) {
-      // End of value
-      values.push(current);
-      current = '';
+      currentRow.push(currentValue);
+      currentValue = '';
+    } else if ((char === '\r' || char === '\n') && !inQuotes) {
+      if (char === '\r' && nextChar === '\n') {
+        i++;
+      }
+      currentRow.push(currentValue);
+      rows.push(currentRow);
+      currentRow = [];
+      currentValue = '';
     } else {
-      current += char;
+      currentValue += char;
     }
   }
 
-  // Add last value
-  values.push(current);
+  // Push final field/row if there is trailing content
+  if (currentValue !== '' || currentRow.length > 0) {
+    currentRow.push(currentValue);
+    rows.push(currentRow);
+  }
 
-  return values;
+  return rows;
 }
 
 /**
@@ -94,4 +112,3 @@ export async function fetchCSV(url) {
     throw error;
   }
 }
-
